@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "action-capture": {
+      "command": "python",
+      "args": ["-m", "action_capture.mcp"],
+      "env": {
+        "ACTION_CAPTURE_LOG": "C:\\Users\\diego\\Projects\\mark43\\dataset\\events.jsonl"
+      }
+    }
+  }
+}

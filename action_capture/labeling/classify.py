@@ -54,7 +54,20 @@ KIND_LABELS = {
 }
 
 
+def base_control_type(ctype):
+    """Normalize a UIA control type name.
+
+    The `uiautomation` library reports names with a "Control" suffix
+    (e.g. "ButtonControl", "GroupControl"). Our tables use the bare form
+    ("Button", "Group"), so strip the suffix before any lookup/comparison.
+    """
+    if ctype and ctype.endswith("Control"):
+        return ctype[:-len("Control")]
+    return ctype
+
+
 def classify_drag(ctype, name, proc=""):
+    ctype = base_control_type(ctype)
     # Process-aware canvas override: inside a drawing app, a drag over the
     # canvas surface is a stroke even if UIA only reports a generic Pane.
     if proc and proc.lower() in CANVAS_PROCS and ctype in CANVAS_SURFACE_CTRLS:
@@ -90,7 +103,8 @@ def stroke_metrics(path):
 
 # --- Label composition -----------------------------------------------------
 def _target_str(ctype, name):
-    noun = CONTROL_LABELS.get(ctype, ctype.lower() if ctype else "element")
+    base = base_control_type(ctype)
+    noun = CONTROL_LABELS.get(base, base.lower() if base else "element")
     return f"{noun} '{name}'" if name else noun
 
 

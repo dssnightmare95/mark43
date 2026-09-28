@@ -14,7 +14,8 @@ import queue
 import threading
 
 from ..labeling.classify import (
-    classify_drag, describe_click, describe_scroll, describe_drag, TEXT_CTRLS,
+    classify_drag, describe_click, describe_scroll, describe_drag,
+    TEXT_CTRLS, base_control_type,
 )
 from .snapshot import snapshot_window
 
@@ -161,7 +162,7 @@ class UIContextAgent(threading.Thread):
             return None, None
 
     def _text_ok(self, ctype, ui):
-        if ctype not in TEXT_CTRLS:
+        if base_control_type(ctype) not in TEXT_CTRLS:
             return False
         if ui and ui.get("is_password"):
             return False

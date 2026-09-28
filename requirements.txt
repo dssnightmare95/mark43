@@ -3,3 +3,6 @@ pynput>=1.7        # mouse and keyboard capture
 pywin32>=306       # active window, monitor, process, cursor, ES_PASSWORD
 uiautomation>=2.0  # UI element under the cursor (type/name/state/ancestry)
 psutil>=5.9        # foreground process name
+
+# MCP server (exposes the action timeline to AI assistants).
+mcp>=1.2           # Model Context Protocol SDK (FastMCP)

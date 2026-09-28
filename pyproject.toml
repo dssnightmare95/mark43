@@ -13,11 +13,13 @@ dependencies = [
     "pywin32>=306",
     "uiautomation>=2.0",
     "psutil>=5.9",
+    "mcp>=1.2",
 ]
 
 [project.scripts]
-# Lets you install the package and run `action-capture` as a command.
+# Lets you install the package and run these as commands.
 action-capture = "action_capture.recorder:main"
+action-capture-mcp = "action_capture.mcp.server:main"
 
 [tool.setuptools.packages.find]
 include = ["action_capture*"]
