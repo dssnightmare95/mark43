@@ -75,6 +75,15 @@ def summarize_session() -> dict:
 
 
 def main():
+    # Register this session and ensure a single capture daemon is running.
+    # On exit, deregister so the daemon can stop when the last session closes.
+    import atexit
+    from ..daemon import launcher
+
+    log_path = store.DEFAULT_LOG
+    session_id = launcher.acquire_session(log_path)
+    atexit.register(launcher.release_session, log_path, session_id)
+
     mcp.run()
 
 

@@ -99,9 +99,12 @@ isn't flooded (critical given unfiltered capture generates many events).
 
 - **F1 — MCP reader (MVP):** MCP server over the current JSONL with
   `checkpoint`, `list_actions`, `summarize_session`,
-  `get_actions_since_last_checkpoint`. Manual start. ← *in progress*
-- **F2 — Singleton daemon + refcount via MCP:** named mutex, heartbeat,
-  rotation, launcher inside the MCP server.
+  `get_actions_since_last_checkpoint`. Manual start. ✅ *done*
+- **F2 — Singleton daemon + refcount via MCP:** ✅ *done*. Windows named mutex
+  (`daemon/coordination.py`) makes the capture daemon single-instance; the MCP
+  server registers a PID-based session and spawns the daemon detached
+  (`daemon/launcher.py`); an idle monitor (`daemon/monitor.py`) stops the
+  daemon once no live session remains. *(Log rotation deferred to F3.)*
 - **F3 — Adaptive effect layer:** filesystem watcher (universal) + text differ
   + human/AI attribution.
 - **F4 — Integrations:** Claude Code `UserPromptSubmit` hook + skill; Codex MCP

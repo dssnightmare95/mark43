@@ -19,6 +19,8 @@ from .agents.ui_context import UIContextAgent
 from .agents.mouse import MouseAgent
 from .agents.keyboard import KeyboardAgent
 from .agents.window import WindowAgent
+from .daemon import coordination
+from .daemon.monitor import IdleMonitor
 
 
 def build_parser():
@@ -35,6 +37,9 @@ def build_parser():
                     help="log every keystroke instead of aggregating typed text")
     ap.add_argument("--a11y-snapshot", action="store_true",
                     help="attach an accessibility-tree snapshot on each click")
+    ap.add_argument("--daemon", action="store_true",
+                    help="run as a single-instance background daemon that stops "
+                         "when no MCP session remains (used by the launcher)")
     return ap
 
 
@@ -44,6 +49,16 @@ def main(argv=None):
     set_dpi_awareness()
     os.makedirs(args.out, exist_ok=True)
     jsonl_path = os.path.join(args.out, "events.jsonl")
+
+    # Daemon mode: enforce a single instance across all sessions.
+    instance = None
+    if args.daemon:
+        instance = coordination.SingleInstance(jsonl_path)
+        if not instance.acquire():
+            print("Capture daemon already running; exiting.")
+            return
+        coordination.write_daemon_pid(jsonl_path)
+
     sink = JsonlWriter(jsonl_path)
 
     secure_state = SecureState()
@@ -61,7 +76,8 @@ def main(argv=None):
                                on_focus_change=keyboard_agent.flush_text)
 
     print(f"Recording -> {jsonl_path}")
-    print("  keys:", "masked" if args.mask_keys else "raw",
+    print("  mode:", "daemon" if args.daemon else "interactive",
+          "| keys:", "masked" if args.mask_keys else "raw",
           "| aggregate:", "off" if args.no_aggregate else "on",
           "| selected text:", "on" if args.capture_text else "off",
           "| a11y:", "on" if args.a11y_snapshot else "off")
@@ -69,24 +85,38 @@ def main(argv=None):
     if not HAS_WIN32:
         print("  WARNING: pywin32 not installed - no window/monitor context.")
 
+    # In daemon mode, stop automatically once no MCP session remains. The
+    # monitor stops the keyboard listener, which unblocks the join below.
+    idle_monitor = None
+    if args.daemon:
+        idle_monitor = IdleMonitor(jsonl_path,
+                                   on_idle=keyboard_agent.listener.stop)
+        idle_monitor.start()
+
     worker.start()
     window_agent.start()
     mouse_agent.start()
     keyboard_agent.start()
 
     try:
-        # The keyboard listener returns False (stops) on Esc; wait for that.
+        # The keyboard listener returns False (stops) on Esc or when the idle
+        # monitor stops it; wait for that.
         keyboard_agent.listener.join()
     except KeyboardInterrupt:
         pass
     finally:
         stop_event.set()
+        if idle_monitor:
+            idle_monitor.stop()
         mouse_agent.stop()
         window_agent.stop()
         keyboard_agent.stop()      # flushes pending typed text
         worker.stop()
         worker.join(timeout=3)
         sink.close()
+        if instance:
+            coordination.clear_daemon_pid(jsonl_path)
+            instance.release()
         print("Stopped. Dataset saved in", args.out)
 
 
