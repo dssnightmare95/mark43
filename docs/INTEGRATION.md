@@ -19,8 +19,9 @@ python install.py --uninstall   # remove everything it added
 `install.py`:
 
 - runs `pip install -e .` (dependencies + the `action_capture` package);
-- **Codex** → registers the MCP server in `~/.codex/config.toml` and the hooks
-  in `~/.codex/hooks.json`;
+- **Codex** → registers the MCP server in `~/.codex/config.toml`, the hooks in
+  `~/.codex/hooks.json`, and an instruction block in `~/.codex/AGENTS.md` (so
+  Codex knows to consult the MCP automatically — its equivalent of the skill);
 - **Claude Code** → writes the hooks to `~/.claude/settings.json`, registers
   the MCP server via `claude mcp add -s user`, and installs the
   `human-context` skill into `~/.claude/skills/`.
@@ -56,17 +57,19 @@ project directory.
 The `Stop` checkpoint is what keeps the AI's own edits out of the next
 injection window.
 
-## Codex guidance (optional)
+## Making it automatic
 
-Codex has no skill mechanism; add an `AGENTS.md` note so the agent calls the
-tools when it needs more than the injected summary:
+You should not have to say "check the MCP" — asking *"what did I change in
+X.py?"* should be enough. Two layers make that work:
 
-```markdown
-## Human activity
-An `action-capture` MCP server records what I do between your turns. When I
-reference something I changed, or before editing a file I may have touched,
-call `get_changes_since_last_turn` (file diffs + action summary).
-```
+- **Passive injection** (both clients): the `UserPromptSubmit` hook injects a
+  summary of recent changes every turn, so common cases need no tool call.
+- **Active lookup**: for a specific file or a change from earlier in the
+  session, the assistant calls `get_file_changes(path=...)`. It knows to do so
+  from the `human-context` skill (Claude) or the `~/.codex/AGENTS.md` block
+  (Codex) — both installed by `install.py` — reinforced by the tool
+  descriptions. `get_file_changes` searches the **whole session**, not just the
+  last turn, so late questions still work.
 
 ## Notes
 

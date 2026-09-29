@@ -38,6 +38,18 @@ INJECT = f'"{PY}" -m {MARKER} inject'
 CHECKPOINT = f'"{PY}" -m {MARKER} checkpoint'
 MCP_HEADER = "[mcp_servers.action-capture]"
 
+# Codex has no "skills"; a global AGENTS.md note tells it to consult the MCP.
+AGENTS_START = "<!-- action-capture:start -->"
+AGENTS_END = "<!-- action-capture:end -->"
+AGENTS_BODY = """## Human activity (action-capture)
+An `action-capture` MCP server records what I do between your turns. When I ask
+what I changed, edited, modified, drew, renamed, or did manually — in a file or
+overall — call its tools automatically, without being told:
+- `get_file_changes` (pass the filename/path if I name one) for a specific
+  file, searched across the whole session;
+- `get_changes_since_last_turn` for what I just did.
+Treat the returned diffs as the source of truth; don't ask me to remind you."""
+
 
 def log(msg):
     print(msg)
@@ -124,6 +136,38 @@ def apply_hooks(root, uninstall):
 # --------------------------------------------------------------------------
 # TOML block (remove our mcp table by its stable header)
 # --------------------------------------------------------------------------
+def _strip_block(text, start, end):
+    """Remove every start..end marked block from text."""
+    while start in text and end in text and text.index(start) < text.index(end):
+        i, j = text.index(start), text.index(end) + len(end)
+        text = text[:i] + text[j:]
+    return text
+
+
+def agents_md(d, dry, uninstall):
+    """Add/remove the action-capture instruction block in a global AGENTS.md."""
+    path = os.path.join(d, "AGENTS.md")
+    if uninstall and not os.path.exists(path):
+        return
+    text = ""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    stripped = _strip_block(text, AGENTS_START, AGENTS_END).strip()
+    if uninstall:
+        if not stripped:
+            remove_file(path, dry, "AGENTS.md")
+        elif stripped + "\n" != text:
+            write_text(path, stripped + "\n", dry, "AGENTS.md")
+        return
+    block = f"{AGENTS_START}\n{AGENTS_BODY}\n{AGENTS_END}"
+    new = (stripped + "\n\n" + block + "\n") if stripped else block + "\n"
+    if new != text:
+        write_text(path, new, dry, "AGENTS.md instructions")
+    else:
+        log("      AGENTS.md: nothing to change")
+
+
 def remove_toml_block(text, header):
     out, skip = [], False
     for line in text.splitlines(keepends=True):
@@ -172,6 +216,8 @@ def codex(dry, uninstall):
     data = load_json(hooks)
     apply_hooks(data, uninstall)
     write_json(hooks, data, dry, "hooks.json")
+
+    agents_md(d, dry, uninstall)
 
 
 def claude(dry, uninstall):

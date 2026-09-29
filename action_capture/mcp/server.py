@@ -69,19 +69,18 @@ def list_actions(since_seq: Optional[int] = None,
 
 
 @mcp.tool()
-def get_file_changes(since_seq: Optional[int] = None,
+def get_file_changes(path: Optional[str] = None,
+                     since_seq: Optional[int] = None,
                      limit: int = 100) -> dict:
-    """File changes the human made (the effect layer).
+    """What the human changed on disk, with diffs for text files.
 
-    Returns `file_change` events (created/modified/deleted) with a unified diff
-    for text files. `since_seq` bounds the range; defaults to the last
-    checkpoint if one is set.
+    Call this automatically whenever the user asks what THEY changed, edited,
+    modified, or did manually — in a specific file or overall — even if they
+    don't mention this tool. Searches the whole session by default (not just
+    the last turn), so it works for changes made several turns ago. Pass `path`
+    (a filename or path substring) to focus on one file.
     """
-    if since_seq is None:
-        cp = store.get_checkpoint()
-        since_seq = cp["seq"] if cp else None
-    events = store.read_events(since_seq=since_seq,
-                               event_types=["file_change"], limit=limit)
+    events = store.file_changes(path=path, since_seq=since_seq, limit=limit)
     return {"count": len(events), "changes": events}
 
 
@@ -89,9 +88,10 @@ def get_file_changes(since_seq: Optional[int] = None,
 def get_changes_since_last_turn(limit: int = 300) -> dict:
     """Everything the human did since the last checkpoint: the headline tool.
 
-    Combines the file changes (what changed, with diffs) and a summary of the
-    input actions (how it was done). Call `checkpoint()` after you act so this
-    reflects only the human's subsequent work.
+    Call this automatically when the user refers to work they just did, or
+    before editing a file they may have touched. Combines file changes (what
+    changed, with diffs) and a summary of the input actions (how). For a change
+    from earlier in the session, use `get_file_changes(path=...)` instead.
     """
     cp = store.get_checkpoint()
     since_seq = cp["seq"] if cp else None

@@ -112,6 +112,24 @@ def actions_since_checkpoint(log_path=DEFAULT_LOG, *, process=None, limit=None):
     return read_events(log_path, since_seq=since_seq, process=process, limit=limit)
 
 
+def file_changes(log_path=DEFAULT_LOG, *, path=None, since_seq=None, limit=None):
+    """file_change events, optionally filtered by a path substring.
+
+    Searches the whole log by default (not just since the last checkpoint), so
+    it answers "what did I change in X" even several turns later.
+    """
+    out = []
+    needle = path.lower() if path else None
+    for ev in read_events(log_path, since_seq=since_seq,
+                          event_types=["file_change"]):
+        if needle and needle not in (ev.get("file", {}).get("path", "").lower()):
+            continue
+        out.append(ev)
+    if limit is not None and limit >= 0:
+        out = out[-limit:]
+    return out
+
+
 def summarize(events):
     """Aggregate a list of events into a compact summary dict."""
     by_type = collections.Counter()
