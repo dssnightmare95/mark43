@@ -111,6 +111,10 @@ isn't flooded (critical given unfiltered capture generates many events).
   report the change). MCP tools `get_file_changes` and
   `get_changes_since_last_turn` surface them. *(Fine-grained human/AI
   attribution beyond turn checkpoints is still a heuristic — deferred.)*
-- **F4 — Integrations:** Claude Code `UserPromptSubmit` hook + skill; Codex MCP
-  config; automatic context injection.
+- **F4 — Integrations:** ✅ *done*. Claude Code `UserPromptSubmit` hook
+  auto-injects a compact human-activity summary and `Stop` marks the turn
+  boundary (`integrations/context_hook.py`, wired in `.claude/settings.json`);
+  a `human-context` skill guides on-demand queries; `.mcp.json` is portable
+  (cwd-relative log). Codex setup (MCP config + AGENTS.md) documented in
+  `docs/INTEGRATION.md`. See it for the Codex attribution gap (no Stop hook).
 - **F5 — Future:** per-app adapters (SolidWorks API, etc.) + OCR for canvas.
