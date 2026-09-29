@@ -7,10 +7,12 @@ Controls:  Esc = stop    Ctrl+Alt+P = pause/resume
 """
 
 import os
+import sys
 import argparse
 import threading
 
 from .core.dpi import set_dpi_awareness
+from .core.paths import data_dir
 from .core.events import JsonlWriter
 from .core.secure import SecureState
 from .core.state import InputState
@@ -28,7 +30,8 @@ def build_parser():
     ap = argparse.ArgumentParser(
         prog="action_capture",
         description="Modular computer-use dataset recorder for Windows")
-    ap.add_argument("--out", default="dataset", help="output directory")
+    ap.add_argument("--out", default=None,
+                    help="output directory (default: ~/.action_capture)")
     ap.add_argument("--mask-keys", action="store_true",
                     help="log key categories instead of actual characters")
     ap.add_argument("--capture-text", action="store_true",
@@ -49,9 +52,19 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
+    # Live-feedback prints include window titles, which may contain characters
+    # the console codepage (e.g. cp1252) can't encode. Force UTF-8 so a stray
+    # character can't crash an agent thread. (The JSONL sink is UTF-8 already.)
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     set_dpi_awareness()
-    os.makedirs(args.out, exist_ok=True)
-    jsonl_path = os.path.join(args.out, "events.jsonl")
+    out = args.out or data_dir()
+    os.makedirs(out, exist_ok=True)
+    jsonl_path = os.path.join(out, "events.jsonl")
 
     # Daemon mode: enforce a single instance across all sessions.
     instance = None
@@ -135,7 +148,7 @@ def main(argv=None):
         if instance:
             coordination.clear_daemon_pid(jsonl_path)
             instance.release()
-        print("Stopped. Dataset saved in", args.out)
+        print("Stopped. Dataset saved in", out)
 
 
 if __name__ == "__main__":

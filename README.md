@@ -12,6 +12,19 @@ pip install -r requirements.txt
 
 Dependencies: `pynput`, `pywin32`, `uiautomation`, `psutil` (Windows).
 
+### Use it as an AI assistant (Claude Code / Codex)
+
+To wire the capture into Claude Code and Codex so they get context on what you
+did between turns, run the installer once:
+
+```bash
+python install.py        # or double-click install.bat on Windows
+```
+
+It installs the package and registers the MCP server + activity hooks globally.
+See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for details, flags, and the
+project-scoped alternative.
+
 ## Usage
 
 Everything runs from `capture.py`:

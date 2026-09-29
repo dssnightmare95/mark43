@@ -10,10 +10,10 @@ import json
 import datetime
 import collections
 
-# Default log location. Clients should set ACTION_CAPTURE_LOG to an absolute
-# path; otherwise we fall back to ./dataset/events.jsonl relative to the cwd.
-DEFAULT_LOG = os.environ.get("ACTION_CAPTURE_LOG") or os.path.join(
-    "dataset", "events.jsonl")
+from ..core.paths import default_log
+
+# Shared user-level log (override with ACTION_CAPTURE_LOG / ACTION_CAPTURE_HOME).
+DEFAULT_LOG = default_log()
 
 # Events that carry no window context / are pure UI noise for summaries.
 _MOUSE_TYPES = {"click", "drag", "scroll"}

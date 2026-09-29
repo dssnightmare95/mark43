@@ -1,64 +1,63 @@
 # Integrations: wiring action-capture into an AI assistant
 
-The MCP server is standard, so it works for both Claude Code and Codex. The
-difference is how each client *auto-injects* context and starts the daemon.
+The MCP server is standard and both Claude Code and Codex support the same hook
+events (`UserPromptSubmit`, `Stop`, ...), so the integration is symmetric.
 
-Log-path convention: with no `ACTION_CAPTURE_LOG` set, the MCP server, the
-hooks and the spawned daemon all default to `./dataset/events.jsonl` relative
-to the working directory — so as long as the client runs from the project
-root, everything agrees. Set `ACTION_CAPTURE_LOG` (absolute) to override.
+## One-command setup
 
-## Claude Code (fully wired in this repo)
+```bash
+python install.py        # or double-click install.bat on Windows
+```
 
-Already configured:
+It installs the package + dependencies (`pip install -e .`) and registers the
+`action-capture` MCP server and the activity hooks **globally**, so they work
+in every project:
 
-- `.mcp.json` — registers the `action-capture` MCP server. On session start
-  the server registers a session and (Windows) spawns the single capture
-  daemon; on close it deregisters and the daemon stops when the last session
-  goes away.
-- `.claude/settings.json` — two hooks:
-  - `UserPromptSubmit` → `context_hook inject`: injects a compact summary of
-    the human's file changes + actions since the last turn.
-  - `Stop` → `context_hook checkpoint`: marks the turn boundary when you finish,
-    so the next injection only covers the human's subsequent work (not your
-    own edits).
-- `.claude/skills/human-context/SKILL.md` — tells the assistant when to call
-  the MCP tools for detail beyond the injected summary.
+- **Codex** → `~/.codex/config.toml` (MCP server) + `~/.codex/hooks.json`
+  (`UserPromptSubmit` → inject, `Stop` → checkpoint).
+- **Claude Code** → `~/.claude/settings.json` (hooks) + the MCP server via
+  `claude mcp add -s user`.
 
-Nothing else to do: open the project in Claude Code and approve the server.
+All edits are merged, backed up (`.bak`), and idempotent. Flags: `--dry-run`,
+`--no-install`, `--skip-codex`, `--skip-claude`. Config locations honor
+`CODEX_HOME` / `CLAUDE_CONFIG_DIR`. Restart the client afterwards.
 
-## Codex
+## Shared log
 
-Codex speaks MCP but has no `UserPromptSubmit`/`Stop` hooks, so there is no
-automatic injection — the agent calls the tools itself, guided by `AGENTS.md`.
+Everything reads/writes one user-level log: `~/.action_capture/events.jsonl`
+(override with `ACTION_CAPTURE_LOG`, or the dir with `ACTION_CAPTURE_HOME`).
+One human, one timeline, one daemon — across every tool and project. The
+effect layer still scopes file-watching to each session's project directory.
 
-1. Register the MCP server in `~/.codex/config.toml`:
+## Project-scoped alternative (no global footprint)
 
-   ```toml
-   [mcp_servers.action-capture]
-   command = "python"
-   args = ["-m", "action_capture.mcp"]
-   # Make the package importable and pin the log if Codex's cwd isn't the repo:
-   env = { PYTHONPATH = "C:/path/to/mark43", ACTION_CAPTURE_LOG = "C:/path/to/mark43/dataset/events.jsonl" }
-   ```
+If you'd rather not touch global config, the repo also ships project-scoped
+files that work when you open *this repo* in either client:
 
-2. Add an instruction block to the project's `AGENTS.md` so the agent queries
-   changes between turns:
+- Claude Code: `.mcp.json` + `.claude/settings.json`
+- Codex: `.codex/config.toml` + `.codex/hooks.json` (trust the project first)
 
-   ```markdown
-   ## Human activity
-   An `action-capture` MCP server records what I do between your turns. When I
-   reference something I changed, or before editing a file I may have touched,
-   call `get_changes_since_last_turn` (file diffs + action summary). Call
-   `checkpoint` after you finish acting.
-   ```
+You still need the package importable (`pip install -e .`, or `python -m` with
+`PYTHONPATH`). **Use either the installer *or* the project files, not both** —
+otherwise the hooks fire twice in this repo (duplicate injected context).
 
-Because there's no Stop hook, attribution relies on the agent calling
-`checkpoint` after acting (or on the per-prompt checkpoint that `inject`
-performs on Claude Code). This is the main gap versus the Claude Code path.
+## How the turn loop works
+
+1. You finish a turn → `Stop` hook runs `context_hook checkpoint`, marking the
+   boundary "AI done, human's turn starts".
+2. The human edits files / clicks / types (captured by the daemon).
+3. Next prompt → `UserPromptSubmit` hook runs `context_hook inject`, which
+   prints a compact summary (file diffs + action summary) since that
+   checkpoint. Its stdout is added to the model context.
+4. For detail beyond the summary, the assistant calls the MCP tools
+   (`get_changes_since_last_turn`, etc.), guided by the `human-context` skill
+   (Claude) or an `AGENTS.md` note (Codex).
+
+The `Stop` checkpoint is what keeps the AI's own edits out of the next
+injection window.
 
 ## Notes
 
-- Capture is Windows-only (win32 + UIA). On other platforms the MCP server
-  still reads an existing log, but nothing is captured.
-- The `.mcp.json` daemon auto-start only spawns on Windows.
+- Capture is Windows-only (win32 + UIA). On other platforms the MCP server can
+  still read an existing log, but nothing is captured and the daemon won't
+  auto-start.
