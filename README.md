@@ -1,129 +1,186 @@
-# mark43 — computer-use dataset recorder
+# mark43 — human-action context for AI assistants
 
-Captures a timeline of a human's actions on Windows (mouse, keyboard and UI
-context) as **JSONL**, to train a model that infers **what** the user did and
-**how** they did it.
+Gives an AI assistant (Claude Code, Codex) context about **what the human did
+and how**, between turns. When you ask the assistant to change something and
+then edit files, draw, or click around yourself, the assistant sees what
+changed — file diffs plus the input actions that produced them — on your next
+prompt.
 
-## Installation
+Under the hood it's a Windows **computer-use recorder** (mouse, keyboard, UI
+context via UI Automation, and filesystem changes) that streams a JSONL
+timeline, exposed to the assistant over the Model Context Protocol (MCP). The
+same recorder doubles as a dataset generator for training.
 
-```bash
-pip install -r requirements.txt
-```
-
-Dependencies: `pynput`, `pywin32`, `uiautomation`, `psutil` (Windows).
-
-### Use it as an AI assistant (Claude Code / Codex)
-
-To wire the capture into Claude Code and Codex so they get context on what you
-did between turns, run the installer once:
+## Quick start
 
 ```bash
 python install.py        # or double-click install.bat on Windows
 ```
 
-It installs the package and registers the MCP server + activity hooks globally.
-See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for details, flags, and the
-project-scoped alternative.
+The installer runs `pip install -e .` and registers the `action-capture` MCP
+server + activity hooks **globally** for Codex and Claude Code. Restart the
+client and it just works: open any project, and the assistant gets your
+between-turn activity automatically.
 
-## Usage
+See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for flags, manual setup, and
+the project-scoped alternative.
 
-Everything runs from `capture.py`:
+## How it works (the turn loop)
 
-```bash
-python capture.py                    # full capture (aggregated text)
-python capture.py --capture-text     # + selected text (never in password fields)
-python capture.py --a11y-snapshot    # + accessibility tree per click
-python capture.py --mask-keys        # no key content (categories only)
-python capture.py --no-aggregate     # one row per keystroke (no text grouping)
-python capture.py --out session1     # output folder per session
-python capture.py --help
+```mermaid
+sequenceDiagram
+    actor H as Human
+    participant AI as Claude / Codex
+    participant Hook as context_hook
+    participant Log as ~/.action_capture
+
+    AI-->>Hook: Stop hook (turn ends)
+    Hook->>Log: checkpoint (boundary)
+    H->>Log: edits files, clicks, types (via daemon)
+    H->>AI: next prompt
+    AI-->>Hook: UserPromptSubmit hook
+    Hook->>Log: read changes since checkpoint
+    Hook-->>AI: inject summary (what + how)
+    AI->>AI: optionally call MCP tools for detail
 ```
 
-Controls while recording:
-
-| Key | Action |
-|-----|--------|
-| `Esc` | stop and save |
-| `Ctrl+Alt+P` | pause / resume (nothing is recorded while paused) |
-
-Output is written to `dataset/events.jsonl` (one action per line).
+The `Stop` checkpoint marks "AI finished, human's turn starts", so the injected
+window contains the human's work only — not the assistant's own edits.
 
 ## Architecture
 
-Each concern is a standalone **agent** that emits enriched events into a single
-timeline. Mouse events go through an enrichment stage (UI Automation) on a
-separate worker, so the listeners never block and no events are dropped.
+One **single-instance daemon** writes the timeline; each AI session runs cheap
+**readers** (the MCP server and the hooks). The MCP server also ensures the
+daemon is running and keeps a PID-based refcount, so exactly one capture
+process runs no matter how many sessions are open, and it stops when the last
+one closes.
 
 ```mermaid
 flowchart TD
-    H(["👤 Human<br/>mouse · keyboard"])
+    H(["👤 Human input + file changes"])
+
+    subgraph writer["Single writer — the daemon (one instance)"]
+        CAP["capture daemon<br/><i>input agents + effects watcher</i>"]
+    end
+
+    LOG[("~/.action_capture/events.jsonl")]
+
+    subgraph readers["Readers — per AI session"]
+        MCP["MCP server<br/><i>query tools</i>"]
+        HOOK["hooks<br/><i>inject / checkpoint</i>"]
+    end
+
+    AI["Claude / Codex"]
+
+    H --> CAP
+    CAP -- "flush per event" --> LOG
+    LOG --> MCP
+    LOG --> HOOK
+    MCP <--> AI
+    HOOK -- "injected context" --> AI
+    MCP -. "ensure running + refcount" .-> CAP
+```
+
+### Inside the daemon
+
+Each concern is a standalone **agent** emitting enriched events into the single
+timeline. Mouse events go through a UI-Automation enrichment worker so the
+input listeners never block; the effects watcher adds filesystem changes.
+
+```mermaid
+flowchart TD
+    H(["👤 mouse · keyboard"])
+    FS(["📁 project files"])
 
     subgraph agents["action_capture/agents"]
-        direction TB
         M["MouseAgent<br/><i>clicks · drags · scroll</i>"]
         K["KeyboardAgent<br/><i>keys · shortcuts · text</i>"]
         W["WindowAgent<br/><i>app focus</i>"]
         U["UIContextAgent<br/><i>UIA enrichment · worker</i>"]
     end
 
-    subgraph core["action_capture/core"]
-        direction TB
-        EV["events<br/><i>schema · seq · JsonlWriter</i>"]
-        SEC["secure<br/><i>password latch</i>"]
-        WIN["win32util<br/><i>window · monitor · cursor</i>"]
-        ST["state<br/><i>modifiers · pause</i>"]
-    end
-
-    LBL["labeling/classify<br/><i>classification + labels</i>"]
-
-    OUT[("dataset/events.jsonl")]
+    EFF["effects/watcher<br/><i>file changes + diffs</i>"]
+    LBL["labeling/classify<br/><i>gesture labels</i>"]
+    LOG[("events.jsonl")]
 
     H --> M
     H --> K
+    FS --> EFF
     M -- "raw events (queue)" --> U
-    U -- "enriched event" --> EV
-    K -- "writes directly" --> EV
-    W -- "writes directly" --> EV
-    EV --> OUT
-
+    U --> LOG
+    K --> LOG
+    W --> LOG
+    EFF --> LOG
     U -. uses .-> LBL
-    U -. resolves element .-> SEC
-    K -. redacts secrets .-> SEC
-    M -. reads modifiers .-> ST
-    K -. writes modifiers .-> ST
-    M -. window/cursor .-> WIN
-    W -. window .-> WIN
 ```
 
 ### Modules
 
 | Module | Responsibility |
 |--------|----------------|
-| `capture.py` | Entry point; launches the package. |
-| `agents/mouse.py` | Clicks (single/double/triple), scroll, and drags with a sampled path. |
-| `agents/keyboard.py` | Keys, shortcuts, typed-text aggregation, and password redaction. |
-| `agents/ui_context.py` | Resolves the UIA element (type, name, state, ancestry), drop target, selected text, and a11y snapshot. Enrichment stage. |
-| `agents/window.py` | Detects application focus changes. |
-| `agents/snapshot.py` | Bounded accessibility tree (the "structured screenshot"). |
-| `labeling/classify.py` | Pure functions: gesture classification and readable labels. |
-| `core/events.py` | Event schema (`schema_version`, `seq`, `timestamp`) and the JSONL sink. |
+| `capture.py` / `install.py` | Recorder entry point / one-command installer. |
+| `agents/mouse.py` | Clicks (single/double/triple), scroll, drags with a sampled path. |
+| `agents/keyboard.py` | Keys, shortcuts, typed-text aggregation, password redaction. |
+| `agents/ui_context.py` | Resolves the UIA element (type, name, state, ancestry), drop target, selected text, a11y snapshot. |
+| `agents/window.py` | Application focus changes. |
+| `agents/snapshot.py` | Bounded accessibility tree (structured "screenshot"). |
+| `effects/watcher.py` | Polls session roots, emits `file_change` events. |
+| `effects/differ.py` | Text detection + unified diffs. |
+| `labeling/classify.py` | Gesture classification and readable labels (pure). |
+| `core/events.py` | Event schema (`schema_version`, `seq`, `timestamp`) + JSONL sink. |
 | `core/secure.py` | Password-field detection (UIA `IsPassword` + Win32 `ES_PASSWORD`). |
 | `core/win32util.py` | Active window, monitor, geometry, cursor shape. |
-| `core/state.py` | Shared state: active modifiers and pause flag. |
-| `recorder.py` | Wires the agents together and runs the session. |
+| `core/paths.py` | Shared user-level log location. |
+| `core/state.py` | Shared modifiers + pause flag. |
+| `daemon/` | Single-instance guard, session refcount, launcher, idle monitor. |
+| `mcp/` | MCP server + log store (query tools). |
+| `integrations/context_hook.py` | Hook CLI: `inject` / `checkpoint`. |
+| `recorder.py` | Wires the agents and runs the session. |
+
+## MCP tools
+
+| Tool | Returns |
+|------|---------|
+| `get_changes_since_last_turn()` | File changes (with diffs) + action summary since the last checkpoint. The headline tool. |
+| `get_file_changes(since_seq, limit)` | Just the file changes/diffs. |
+| `list_actions(...)` | Filtered actions (by process, event type, time range). |
+| `summarize_session()` | High-level counts for the whole session. |
+| `checkpoint(label)` | Mark a turn boundary. |
 
 ## Event types
 
-`click` · `drag` · `scroll` · `key` · `hotkey` · `text_input` · `window_focus`,
-each with `schema_version`, `seq` (true creation order), `timestamp`,
-window/process, and — where applicable — the target UI element (type, name,
-state, ancestry).
+`click` · `drag` · `scroll` · `key` · `hotkey` · `text_input` ·
+`window_focus` · `file_change`, each with `schema_version`, `seq` (true
+creation order), `timestamp`, window/process, and — where applicable — the
+target UI element (type, name, state, ancestry) or a text diff.
+
+## Manual capture (dataset mode)
+
+To just record a session (e.g. to build a training dataset), run the recorder
+directly:
+
+```bash
+python capture.py                    # full capture (aggregated text)
+python capture.py --capture-text     # + selected text (never in password fields)
+python capture.py --a11y-snapshot    # + accessibility tree per click
+python capture.py --mask-keys        # no key content (categories only)
+python capture.py --out session1     # output folder for this session
+python capture.py --help
+```
+
+Controls: `Esc` stops · `Ctrl+Alt+P` pauses/resumes. Output goes to
+`<out>/events.jsonl` (default `~/.action_capture`).
 
 ## Privacy
 
 - Content typed into **password fields is omitted entirely** (UI Automation
-  `IsPassword` + Win32 `ES_PASSWORD` style).
-- Selected text is only stored with `--capture-text`, and never in secure
-  fields.
-- Datasets (`dataset/`, `*.jsonl`) are excluded from git because they may
-  contain personal information.
+  `IsPassword` + Win32 `ES_PASSWORD`).
+- Selected text is only stored with `--capture-text`, never in secure fields.
+- The log may contain personal data; it lives outside the repo
+  (`~/.action_capture`) and `dataset/` / `*.jsonl` are gitignored.
+- Capture is Windows-only (win32 + UIA).
+
+## More
+
+- [`docs/DESIGN.md`](docs/DESIGN.md) — full design, decisions, and phases.
+- [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — Claude Code & Codex setup.
