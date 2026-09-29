@@ -64,7 +64,32 @@ def build_injection(events):
     return "\n".join(lines).strip()
 
 
+def _run(mode):
+    log = store.DEFAULT_LOG
+    if mode == "checkpoint":
+        store.set_checkpoint(log, label="turn-boundary")
+        return
+
+    cp = store.get_checkpoint(log)
+    # Filter by timestamp, not seq: seq resets when the daemon restarts.
+    since_time = cp["timestamp"] if cp else None
+    events = store.read_events(log, since_time=since_time)
+    out = build_injection(events)
+    if out:
+        print(out)
+    # Advance the checkpoint so the next injection is incremental even if the
+    # Stop hook doesn't fire.
+    store.set_checkpoint(log, label="prompt-submit")
+
+
 def main(argv=None):
+    # Force UTF-8 stdout: window titles / paths may contain characters the
+    # console codepage can't encode, which would otherwise crash the hook.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     ap = argparse.ArgumentParser(prog="context_hook")
     ap.add_argument("mode", choices=["inject", "checkpoint"])
     args = ap.parse_args(argv)
@@ -75,21 +100,11 @@ def main(argv=None):
     except Exception:
         pass
 
-    log = store.DEFAULT_LOG
-
-    if args.mode == "checkpoint":
-        store.set_checkpoint(log, label="turn-boundary")
-        return
-
-    cp = store.get_checkpoint(log)
-    since = cp["seq"] if cp else None
-    events = store.read_events(log, since_seq=since)
-    out = build_injection(events)
-    if out:
-        print(out)
-    # Advance the checkpoint so the next injection is incremental even if the
-    # Stop hook doesn't fire.
-    store.set_checkpoint(log, label="prompt-submit")
+    # A hook must never break the user's turn: swallow any error and exit 0.
+    try:
+        _run(args.mode)
+    except Exception as exc:
+        print(f"[context_hook] skipped: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

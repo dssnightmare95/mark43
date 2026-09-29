@@ -94,8 +94,8 @@ def get_changes_since_last_turn(limit: int = 300) -> dict:
     from earlier in the session, use `get_file_changes(path=...)` instead.
     """
     cp = store.get_checkpoint()
-    since_seq = cp["seq"] if cp else None
-    all_events = store.read_events(since_seq=since_seq, limit=limit)
+    since_time = cp["timestamp"] if cp else None
+    all_events = store.read_events(since_time=since_time, limit=limit)
     file_changes = [e for e in all_events if e.get("event_type") == "file_change"]
     actions = [e for e in all_events if e.get("event_type") != "file_change"]
     return {

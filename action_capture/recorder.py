@@ -66,6 +66,14 @@ def main(argv=None):
     os.makedirs(out, exist_ok=True)
     jsonl_path = os.path.join(out, "events.jsonl")
 
+    # Continue seq from the existing log so it stays monotonic across restarts.
+    try:
+        from .mcp.store import latest as _latest
+        from .core import events as _events
+        _events.seed_seq(_latest(jsonl_path)[0])
+    except Exception:
+        pass
+
     # Daemon mode: enforce a single instance across all sessions.
     instance = None
     if args.daemon:

@@ -22,6 +22,15 @@ def next_seq():
         return _seq
 
 
+def seed_seq(start):
+    """Continue the seq counter from an existing log so it stays monotonic
+    across daemon restarts (seq is otherwise a per-process counter)."""
+    global _seq
+    with _seq_lock:
+        if start and start > _seq:
+            _seq = start
+
+
 def iso_now():
     return datetime.datetime.now().isoformat(timespec="milliseconds")
 

@@ -106,10 +106,14 @@ def get_checkpoint(log_path=DEFAULT_LOG):
 
 
 def actions_since_checkpoint(log_path=DEFAULT_LOG, *, process=None, limit=None):
-    """Events recorded after the last checkpoint (all events if none set)."""
+    """Events recorded after the last checkpoint (all events if none set).
+
+    Filters by timestamp, not seq: seq is a per-process counter that resets on
+    daemon restart, so a stored seq can't be compared across restarts.
+    """
     cp = get_checkpoint(log_path)
-    since_seq = cp["seq"] if cp else None
-    return read_events(log_path, since_seq=since_seq, process=process, limit=limit)
+    since_time = cp["timestamp"] if cp else None
+    return read_events(log_path, since_time=since_time, process=process, limit=limit)
 
 
 def file_changes(log_path=DEFAULT_LOG, *, path=None, since_seq=None, limit=None):
