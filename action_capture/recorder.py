@@ -21,6 +21,7 @@ from .agents.keyboard import KeyboardAgent
 from .agents.window import WindowAgent
 from .daemon import coordination
 from .daemon.monitor import IdleMonitor
+from .effects.watcher import EffectsAgent
 
 
 def build_parser():
@@ -40,6 +41,8 @@ def build_parser():
     ap.add_argument("--daemon", action="store_true",
                     help="run as a single-instance background daemon that stops "
                          "when no MCP session remains (used by the launcher)")
+    ap.add_argument("--no-effects", action="store_true",
+                    help="disable the filesystem effect layer (file changes/diffs)")
     return ap
 
 
@@ -75,6 +78,17 @@ def main(argv=None):
     window_agent = WindowAgent(sink, input_state,
                                on_focus_change=keyboard_agent.flush_text)
 
+    # Effect layer: watch the session roots (daemon) or the cwd (interactive).
+    effects_agent = None
+    if not args.no_effects:
+        if args.daemon:
+            def roots_provider():
+                return coordination.live_roots(jsonl_path)
+        else:
+            def roots_provider():
+                return [os.getcwd()]
+        effects_agent = EffectsAgent(sink, roots_provider)
+
     print(f"Recording -> {jsonl_path}")
     print("  mode:", "daemon" if args.daemon else "interactive",
           "| keys:", "masked" if args.mask_keys else "raw",
@@ -97,6 +111,8 @@ def main(argv=None):
     window_agent.start()
     mouse_agent.start()
     keyboard_agent.start()
+    if effects_agent:
+        effects_agent.start()
 
     try:
         # The keyboard listener returns False (stops) on Esc or when the idle
@@ -108,6 +124,8 @@ def main(argv=None):
         stop_event.set()
         if idle_monitor:
             idle_monitor.stop()
+        if effects_agent:
+            effects_agent.stop()
         mouse_agent.stop()
         window_agent.stop()
         keyboard_agent.stop()      # flushes pending typed text

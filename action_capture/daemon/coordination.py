@@ -169,14 +169,19 @@ def _with_lock(log_path, fn):
         k.CloseHandle(h)
 
 
-def register_session(log_path, pid=None):
-    """Add this process as a live session; returns its session id."""
+def register_session(log_path, pid=None, cwd=None):
+    """Add this process as a live session; returns its session id.
+
+    `cwd` is the session's working directory (the project being assisted),
+    used to scope the filesystem effect layer.
+    """
     pid = pid or os.getpid()
+    cwd = cwd or os.getcwd()
     sid = f"{pid}-{int(time.time() * 1000)}"
 
     def upd():
         reg = _read_reg(log_path)
-        reg.append({"id": sid, "pid": pid, "started": time.time()})
+        reg.append({"id": sid, "pid": pid, "cwd": cwd, "started": time.time()})
         _write_reg(log_path, reg)
 
     _with_lock(log_path, upd)
@@ -205,3 +210,13 @@ def live_sessions(log_path):
 
 def live_count(log_path):
     return len(live_sessions(log_path))
+
+
+def live_roots(log_path):
+    """Unique existing working directories of the live sessions."""
+    roots = []
+    for s in live_sessions(log_path):
+        cwd = s.get("cwd")
+        if cwd and cwd not in roots and os.path.isdir(cwd):
+            roots.append(cwd)
+    return roots

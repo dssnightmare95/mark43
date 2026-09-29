@@ -69,6 +69,44 @@ def list_actions(since_seq: Optional[int] = None,
 
 
 @mcp.tool()
+def get_file_changes(since_seq: Optional[int] = None,
+                     limit: int = 100) -> dict:
+    """File changes the human made (the effect layer).
+
+    Returns `file_change` events (created/modified/deleted) with a unified diff
+    for text files. `since_seq` bounds the range; defaults to the last
+    checkpoint if one is set.
+    """
+    if since_seq is None:
+        cp = store.get_checkpoint()
+        since_seq = cp["seq"] if cp else None
+    events = store.read_events(since_seq=since_seq,
+                               event_types=["file_change"], limit=limit)
+    return {"count": len(events), "changes": events}
+
+
+@mcp.tool()
+def get_changes_since_last_turn(limit: int = 300) -> dict:
+    """Everything the human did since the last checkpoint: the headline tool.
+
+    Combines the file changes (what changed, with diffs) and a summary of the
+    input actions (how it was done). Call `checkpoint()` after you act so this
+    reflects only the human's subsequent work.
+    """
+    cp = store.get_checkpoint()
+    since_seq = cp["seq"] if cp else None
+    all_events = store.read_events(since_seq=since_seq, limit=limit)
+    file_changes = [e for e in all_events if e.get("event_type") == "file_change"]
+    actions = [e for e in all_events if e.get("event_type") != "file_change"]
+    return {
+        "checkpoint": cp,
+        "file_changes": file_changes,
+        "actions_summary": store.summarize(actions),
+        "actions": actions,
+    }
+
+
+@mcp.tool()
 def summarize_session() -> dict:
     """High-level summary of the whole session: counts by type and by app."""
     return store.summarize(store.read_events(limit=None))

@@ -105,8 +105,12 @@ isn't flooded (critical given unfiltered capture generates many events).
   server registers a PID-based session and spawns the daemon detached
   (`daemon/launcher.py`); an idle monitor (`daemon/monitor.py`) stops the
   daemon once no live session remains. *(Log rotation deferred to F3.)*
-- **F3 — Adaptive effect layer:** filesystem watcher (universal) + text differ
-  + human/AI attribution.
+- **F3 — Adaptive effect layer:** ✅ *done*. `effects/watcher.py` polls the
+  live session roots (from the registry) and emits `file_change` events;
+  `effects/differ.py` adds a unified diff for text files (binary/CAD just
+  report the change). MCP tools `get_file_changes` and
+  `get_changes_since_last_turn` surface them. *(Fine-grained human/AI
+  attribution beyond turn checkpoints is still a heuristic — deferred.)*
 - **F4 — Integrations:** Claude Code `UserPromptSubmit` hook + skill; Codex MCP
   config; automatic context injection.
 - **F5 — Future:** per-app adapters (SolidWorks API, etc.) + OCR for canvas.
