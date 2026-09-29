@@ -18,12 +18,13 @@ python install.py        # or double-click install.bat on Windows
 ```
 
 The installer runs `pip install -e .` and registers the `action-capture` MCP
-server + activity hooks **globally** for Codex and Claude Code. Restart the
+server + activity hooks **globally** for Codex and Claude Code (it's a
+user-level tool — one daemon, one log, across every project). Restart the
 client and it just works: open any project, and the assistant gets your
 between-turn activity automatically.
 
-See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for flags, manual setup, and
-the project-scoped alternative.
+Re-running is safe (idempotent); `python install.py --uninstall` removes it.
+See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for flags and details.
 
 ## How it works (the turn loop)
 

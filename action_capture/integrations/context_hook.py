@@ -11,9 +11,9 @@ then advances the checkpoint. Empty output means "nothing to inject".
 `checkpoint` just advances the checkpoint (used on the Stop hook, when the AI
 finishes, so the next window excludes the AI's own edits).
 
-The log path follows ACTION_CAPTURE_LOG, else ./dataset/events.jsonl relative
-to the cwd (which Claude Code sets to the project root) — the same resolution
-the MCP server and daemon use, so all three agree.
+The log path follows ACTION_CAPTURE_LOG / ACTION_CAPTURE_HOME, else
+~/.action_capture/events.jsonl — the same resolution the MCP server and daemon
+use, so all three agree.
 """
 
 import sys

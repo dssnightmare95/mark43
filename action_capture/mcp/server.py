@@ -1,12 +1,12 @@
-"""FastMCP server exposing the human's captured action timeline to an AI.
+"""MCP server exposing the human's captured action timeline to an AI.
 
-Phase 1: read-only over the existing JSONL log. Daemon auto-start and the
-effect layer (file diffs) come in later phases.
+Reads the shared JSONL log and, on startup, registers a session and ensures
+the single capture daemon is running (releasing on exit via refcount).
 
 Run:  python -m action_capture.mcp        (stdio transport)
 
-Configure the log path via the ACTION_CAPTURE_LOG environment variable in the
-MCP client config; otherwise it defaults to ./dataset/events.jsonl.
+The log path follows ACTION_CAPTURE_LOG / ACTION_CAPTURE_HOME, else
+~/.action_capture/events.jsonl.
 """
 
 from typing import Optional

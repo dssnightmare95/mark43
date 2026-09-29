@@ -1,6 +1,0 @@
-# Project-scoped Codex config. Registers the action-capture MCP server for
-# this repo. For use across all your projects, run `python install.py`, which
-# writes the same entry into ~/.codex/config.toml.
-[mcp_servers.action-capture]
-command = "python"
-args = ["-m", "action_capture.mcp"]

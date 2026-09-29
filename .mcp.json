@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "action-capture": {
-      "command": "python",
-      "args": ["-m", "action_capture.mcp"]
-    }
-  }
-}
