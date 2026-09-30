@@ -25,33 +25,39 @@ FLUSH_IDLE_SEC = 1.5      # flush buffered text after this idle gap
 REDACTED = "<hidden>"
 
 
-def modifier_name(key):
-    n = getattr(key, "name", "") or ""
-    if n.startswith("ctrl"):
-        return "ctrl"
-    if n.startswith("alt"):
-        return "alt"
-    if n.startswith("shift"):
-        return "shift"
-    if n.startswith("cmd"):
-        return "win"
-    return ""
+def is_modifier_key(key):
+    return key in MODIFIER_KEYS
+
+
+def char_of(key):
+    """The text character a key produces, or None for non-text keys.
+
+    Space is a text character (so words stay together); Enter/Tab/arrows are not.
+    """
+    if isinstance(key, keyboard.Key):
+        return " " if key == keyboard.Key.space else None
+    return getattr(key, "char", None)
+
+
+def mask_char(ch, mask):
+    if not mask or ch.isspace():
+        return ch
+    if ch.isalpha():
+        return "<letter>"
+    if ch.isdigit():
+        return "<digit>"
+    return "<symbol>"
 
 
 def key_repr(key, mask):
+    """Representation for a standalone key/shortcut event (not buffered text)."""
     if isinstance(key, keyboard.Key):
         return key.name
     ch = getattr(key, "char", None)
     if ch is None:
         vk = getattr(key, "vk", None)
         return f"vk{vk}" if vk is not None else "unknown"
-    if mask:
-        if ch.isalpha():
-            return "<letter>"
-        if ch.isdigit():
-            return "<digit>"
-        return "<symbol>"
-    return ch
+    return mask_char(ch, mask)
 
 
 class KeyboardAgent:
@@ -67,8 +73,7 @@ class KeyboardAgent:
         self._buf_meta = None
         self._buf_lock = threading.Lock()
         self._timer = None
-        self.listener = keyboard.Listener(
-            on_press=self._on_press, on_release=self._on_release)
+        self.listener = keyboard.Listener(on_press=self._on_press)
 
     def start(self):
         self.listener.start()
@@ -124,16 +129,16 @@ class KeyboardAgent:
         return False
 
     # -- single key / shortcut events -------------------------------------
-    def _write_key(self, key):
+    def _write_key(self, key, mods):
         title, proc = win32util.get_foreground_info()
-        is_hotkey = self.st.has_mods() and key not in MODIFIER_KEYS
+        is_hotkey = bool(mods) and not is_modifier_key(key)
         is_char = not isinstance(key, keyboard.Key)
         secured = is_char and not is_hotkey and self.secure.is_secure()
         keytxt = REDACTED if secured else key_repr(key, self.mask_keys)
-        combo = ("+".join(self.st.mods_list()) + "+" if is_hotkey else "") + keytxt
+        combo = ("+".join(mods) + "+" if is_hotkey else "") + keytxt
 
         event = events.new_event("hotkey" if is_hotkey else "key")
-        event["modifiers"] = self.st.mods_list()
+        event["modifiers"] = mods
         event["window"] = {"title": title, "process": proc}
         event["key"] = {"value": keytxt, "combo": combo}
         event["label"] = describe_key(is_hotkey, combo, proc)
@@ -150,43 +155,38 @@ class KeyboardAgent:
                 self.on_stop()
             return False
 
-        m = modifier_name(key)
-        if m:
-            self.st.add_mod(m)
+        # Real modifier state from the OS (AltGr excluded), so a missed key-up
+        # can't leave a modifier stuck and turn typing into bogus shortcuts.
+        mods = win32util.get_modifiers()
+        # A "shortcut" needs a command modifier; Shift alone is just typing.
+        is_shortcut = any(m in mods for m in ("ctrl", "alt", "win"))
 
         # Ctrl+Alt+P toggles pause.
-        if not isinstance(key, keyboard.Key):
-            ch = getattr(key, "char", None)
-            if ch in ("p", "\x10") and "ctrl" in self.st.mods_list() \
-               and "alt" in self.st.mods_list():
-                paused = self.st.toggle_pause()
-                print(f"--- {'PAUSED' if paused else 'RESUMED'} ---")
-                return
+        if not isinstance(key, keyboard.Key) and getattr(key, "char", None) in ("p", "\x10") \
+           and "ctrl" in mods and "alt" in mods:
+            paused = self.st.toggle_pause()
+            print(f"--- {'PAUSED' if paused else 'RESUMED'} ---")
+            return
 
-        if self.st.paused or m:
-            return  # skip standalone modifier presses (captured via 'modifiers')
+        # Skip standalone modifier presses (captured via each event's modifiers).
+        if self.st.paused or is_modifier_key(key):
+            return
 
-        is_hotkey = self.st.has_mods()
-        is_char = not isinstance(key, keyboard.Key)
+        ch = char_of(key)
 
         # Backspace edits the running buffer instead of flushing.
-        if key == keyboard.Key.backspace and self.aggregate_text and not is_hotkey:
+        if key == keyboard.Key.backspace and self.aggregate_text and not is_shortcut:
             if self._backspace():
                 return
 
-        if is_char and not is_hotkey and self.aggregate_text:
+        if ch is not None and not is_shortcut and self.aggregate_text:
             if self.secure.is_secure():
                 self.flush_text()
-                self._write_key(key)          # logged as redacted <hidden>
+                self._write_key(key, mods)    # logged as redacted <hidden>
             else:
-                self._buffer_char(key_repr(key, self.mask_keys))
+                self._buffer_char(mask_char(ch, self.mask_keys))
             return
 
         # Structural key / shortcut: flush any pending text, then log it.
         self.flush_text()
-        self._write_key(key)
-
-    def _on_release(self, key):
-        m = modifier_name(key)
-        if m:
-            self.st.remove_mod(m)
+        self._write_key(key, mods)

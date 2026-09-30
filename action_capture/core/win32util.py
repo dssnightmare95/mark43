@@ -93,6 +93,46 @@ def get_window(hwnd=None):
         return {"hwnd": 0, "title": "", "process": "", "rect": None, "state": ""}
 
 
+def get_modifiers():
+    """Real modifier state from the OS, immune to missed key-up events.
+
+    Tracking modifiers via pynput press/release is fragile: a missed release
+    (Alt+Tab, focus changes) leaves a modifier stuck "down", turning every
+    later keystroke into a bogus shortcut. Reading GetAsyncKeyState each time
+    avoids that.
+
+    AltGr (right Alt) is handled specially: on many layouts it equals
+    Ctrl+Alt, so typing `@ { [ \\` would look like a shortcut. AltGr is
+    excluded here, so those keystrokes are correctly treated as text.
+    """
+    if not HAS_WIN32:
+        return []
+    try:
+        g = ctypes.windll.user32.GetAsyncKeyState
+        g.restype = ctypes.c_short
+
+        def down(vk):
+            return bool(g(vk) & 0x8000)
+
+        altgr = down(0xA5)                       # VK_RMENU (AltGr)
+        ctrl = (down(0xA2) or down(0xA3)) and not altgr   # L/R Control
+        alt = down(0xA4)                         # VK_LMENU (real left Alt)
+        shift = down(0x10)                       # VK_SHIFT
+        win = down(0x5B) or down(0x5C)           # L/R Win
+        mods = []
+        if ctrl:
+            mods.append("ctrl")
+        if alt:
+            mods.append("alt")
+        if shift:
+            mods.append("shift")
+        if win:
+            mods.append("win")
+        return mods
+    except Exception:
+        return []
+
+
 def get_monitor_name(x, y):
     if not HAS_WIN32:
         return ""

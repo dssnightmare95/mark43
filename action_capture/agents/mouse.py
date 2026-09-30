@@ -63,7 +63,7 @@ class MouseAgent:
                 "cursor": win32util.get_cursor_shape(),
                 "start": (x, y),
                 "path": [[x, y, 0]],
-                "modifiers": self.st.mods_list(),
+                "modifiers": win32util.get_modifiers(),
                 "click_count": self._click_count(btn, x, y),
             }
             return
@@ -95,7 +95,7 @@ class MouseAgent:
         if self.st.paused:
             return
         event = events.new_event("scroll")
-        event["modifiers"] = self.st.mods_list()
+        event["modifiers"] = win32util.get_modifiers()
         event["window"] = win32util.get_window()
         event["mouse"] = {"x": x, "y": y, "scroll": [dx, dy],
                           "monitor": win32util.get_monitor_name(x, y)}
