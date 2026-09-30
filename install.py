@@ -47,7 +47,8 @@ what I changed, edited, modified, drew, renamed, or did manually — in a file o
 overall — call its tools automatically, without being told:
 - `get_file_changes` (pass the filename/path if I name one) for a specific
   file, searched across the whole session;
-- `get_changes_since_last_turn` for what I just did.
+- `get_changes_since_last_turn` for what I just did;
+- `get_window_timeline` for which apps/windows I used and for how long.
 Treat the returned diffs as the source of truth; don't ask me to remind you."""
 
 

@@ -134,6 +134,42 @@ def file_changes(log_path=DEFAULT_LOG, *, path=None, since_seq=None, limit=None)
     return out
 
 
+def _seconds_between(start, end):
+    try:
+        return round((datetime.datetime.fromisoformat(end)
+                      - datetime.datetime.fromisoformat(start)).total_seconds(), 1)
+    except (ValueError, TypeError):
+        return None
+
+
+def window_timeline(log_path=DEFAULT_LOG, *, since_time=None, limit=None):
+    """Which app/window (GUI) was active over time, with dwell durations.
+
+    Built from window_focus events; each segment lasts until the next focus
+    change (the last one until the most recent event in the log).
+    """
+    focus = read_events(log_path, since_time=since_time,
+                        event_types=["window_focus"])
+    if not focus:
+        return []
+    _, last_ts = latest(log_path)
+    segments = []
+    for i, e in enumerate(focus):
+        w = e.get("window", {})
+        start = e.get("timestamp", "")
+        end = focus[i + 1].get("timestamp", "") if i + 1 < len(focus) else last_ts
+        segments.append({
+            "process": w.get("process", ""),
+            "title": w.get("title", ""),
+            "start": start,
+            "end": end,
+            "seconds": _seconds_between(start, end),
+        })
+    if limit is not None and limit >= 0:
+        segments = segments[-limit:]
+    return segments
+
+
 def summarize(events):
     """Aggregate a list of events into a compact summary dict."""
     by_type = collections.Counter()

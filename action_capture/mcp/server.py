@@ -107,6 +107,19 @@ def get_changes_since_last_turn(limit: int = 300) -> dict:
 
 
 @mcp.tool()
+def get_window_timeline(since_time: Optional[str] = None,
+                        limit: int = 100) -> dict:
+    """Which app/window (GUI) the human had active over time, with durations.
+
+    Use this to answer "what apps did I use", "which window was I in", "how long
+    was I on X", or to reconstruct the sequence of programs used. Each entry has
+    process, window title, start/end, and dwell seconds.
+    """
+    tl = store.window_timeline(since_time=since_time, limit=limit)
+    return {"count": len(tl), "timeline": tl}
+
+
+@mcp.tool()
 def summarize_session() -> dict:
     """High-level summary of the whole session: counts by type and by app."""
     return store.summarize(store.read_events(limit=None))
