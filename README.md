@@ -23,8 +23,9 @@ user-level tool — one daemon, one log, across every project). Restart the
 client and it just works: open any project, and the assistant gets your
 between-turn activity automatically.
 
-Re-running is safe (idempotent); `python install.py --uninstall` removes it.
-See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for flags and details.
+Re-running is safe (idempotent); `python install.py --uninstall` (or
+`uninstall.bat`) removes it. See [`docs/INTEGRATION.md`](docs/INTEGRATION.md)
+for flags and details.
 
 ## How it works (the turn loop)
 
@@ -143,17 +144,21 @@ flowchart TD
 | Tool | Returns |
 |------|---------|
 | `get_changes_since_last_turn()` | File changes (with diffs) + action summary since the last checkpoint. The headline tool. |
-| `get_file_changes(since_seq, limit)` | Just the file changes/diffs. |
+| `get_file_changes(path, since_seq, limit)` | File changes/diffs; `path` filters to one file, searched across the whole session. |
+| `get_window_timeline(since_time, limit)` | Which app/window (GUI) was active over time, with dwell durations. |
 | `list_actions(...)` | Filtered actions (by process, event type, time range). |
 | `summarize_session()` | High-level counts for the whole session. |
+| `describe_records()` | The record schema — every event type and field. |
 | `checkpoint(label)` | Mark a turn boundary. |
 
 ## Event types
 
 `click` · `drag` · `scroll` · `key` · `hotkey` · `text_input` ·
-`window_focus` · `file_change`, each with `schema_version`, `seq` (true
-creation order), `timestamp`, window/process, and — where applicable — the
-target UI element (type, name, state, ancestry) or a text diff.
+`window_focus` · `file_change`, each with `schema_version`, `seq`, `timestamp`,
+the active `window` (process/title), and — where applicable — the target UI
+element (type, name, state, ancestry) or a text diff. Order by `timestamp`
+(`seq` resets when the daemon restarts). Call `describe_records()` for the full
+field-by-field schema.
 
 ## Manual capture (dataset mode)
 
@@ -185,3 +190,4 @@ Controls: `Esc` stops · `Ctrl+Alt+P` pauses/resumes. Output goes to
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — full design, decisions, and phases.
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — Claude Code & Codex setup.
+- [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md) — backlog of what's next.
