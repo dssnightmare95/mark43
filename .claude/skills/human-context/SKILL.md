@@ -25,6 +25,8 @@ tools when you need detail or the summary wasn't enough.
 
 ## Tools
 
+- `describe_records()` — the structure of the records (every event_type and its
+  fields). Call this if you're unsure what a field means before interpreting.
 - `get_changes_since_last_turn()` — start here. File changes (the *what*, with
   diffs) plus an action summary (the *how*) since the last checkpoint.
 - `get_file_changes(since_seq, limit)` — just the file changes/diffs.

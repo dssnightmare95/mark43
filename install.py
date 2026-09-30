@@ -49,7 +49,9 @@ overall — call its tools automatically, without being told:
   file, searched across the whole session;
 - `get_changes_since_last_turn` for what I just did;
 - `get_window_timeline` for which apps/windows I used and for how long.
-Treat the returned diffs as the source of truth; don't ask me to remind you."""
+If unsure what a field means, call `describe_records` first — it documents the
+record structure. Treat the returned diffs as the source of truth; don't ask me
+to remind you."""
 
 
 def log(msg):

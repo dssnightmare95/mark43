@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # mcp 2.x
     from mcp.server.mcpserver import MCPServer as _Server
 
 from . import store
+from .schema import SCHEMA
 
 mcp = _Server("action-capture")
 
@@ -117,6 +118,18 @@ def get_window_timeline(since_time: Optional[str] = None,
     """
     tl = store.window_timeline(since_time=since_time, limit=limit)
     return {"count": len(tl), "timeline": tl}
+
+
+@mcp.tool()
+def describe_records() -> dict:
+    """Structure of the event records returned by the other tools.
+
+    Call this first if you're unsure what a field means: it documents every
+    event_type and its fields (mouse, ui, key, file, etc.), plus important
+    caveats (order by timestamp not seq; binary files have no diff; Electron
+    apps expose a poor UI tree).
+    """
+    return SCHEMA
 
 
 @mcp.tool()
