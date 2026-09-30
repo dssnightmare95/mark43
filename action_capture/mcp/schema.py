@@ -87,7 +87,9 @@ SCHEMA = {
             "desc": ("a file under a session's project dir was created/modified/"
                      "deleted (the 'effect' of actions)."),
             "fields": {
-                "file": "{path, change: created/modified/deleted, size, is_text}",
+                "file": ("{path, change: created/modified/deleted, size, is_text}. "
+                         "A bulk op (build/checkout/dependency download) collapses "
+                         "into one record: {change:'bulk', count, by_change, sample}."),
                 "diff": "unified diff for text files (omitted for binary/CAD/images).",
                 "diff_truncated": "true if the diff was cut for size.",
             },

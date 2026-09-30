@@ -16,12 +16,20 @@ from ..core import events
 from . import differ
 
 EXCLUDE_DIRS = {
+    # VCS / editor / python
     ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
     "env", ".idea", ".vscode", ".mypy_cache", ".ruff_cache", ".pytest_cache",
     ".tox", "dist", "build", ".eggs", "target", ".next", ".cache",
+    # dependency / package caches (these can churn thousands of files on build)
+    ".cargo", ".rustup", ".npm", ".nuget", ".gradle", ".m2", ".conda",
+    ".pyenv", "site-packages", "vendor", ".terraform", ".stack-work",
+    "Pods", ".pub-cache", ".ivy2", ".sbt",
 }
 MAX_FILES = 20000          # safety cap per scan
 MAX_CACHE_BYTES = 64_000_000   # cap total cached text content
+# If a single scan sees more changes than this, it's a bulk op (build,
+# checkout, dependency download): log one summary instead of thousands.
+BURST_LIMIT = 200
 
 
 class DirScanner:
@@ -109,6 +117,21 @@ class EffectsAgent(threading.Thread):
         ev["label"] = f"{change} file {path}"
         self.sink.write(ev)
 
+    def _emit_bulk(self, changes):
+        """One summary event for a bulk change, instead of thousands of rows."""
+        import os
+        by_change = {"created": 0, "modified": 0, "deleted": 0}
+        for _, change, _ in changes:
+            by_change[change] = by_change.get(change, 0) + 1
+        roots = sorted({os.path.dirname(p) for p, _, _ in changes[:50]})
+        ev = events.new_event("file_change")
+        ev["file"] = {"change": "bulk", "count": len(changes),
+                      "by_change": by_change,
+                      "sample": [p for p, _, _ in changes[:10]]}
+        ev["label"] = (f"bulk file change: {len(changes)} files "
+                       f"(likely a build/checkout) under {len(roots)} dir(s)")
+        self.sink.write(ev)
+
     def run(self):
         # Baseline scan: seed snapshot + text cache, emit nothing.
         self._prev = self._scanner.snapshot(self.roots_provider() or [])
@@ -123,12 +146,20 @@ class EffectsAgent(threading.Thread):
                 continue
             cur = self._scanner.snapshot(roots)
             prev = self._prev
+            changes = []
             for path, meta in cur.items():
                 if path not in prev:
-                    self._emit(path, "created", meta[1])
+                    changes.append((path, "created", meta[1]))
                 elif meta != prev[path]:
-                    self._emit(path, "modified", meta[1])
+                    changes.append((path, "modified", meta[1]))
             for path in prev:
                 if path not in cur:
-                    self._emit(path, "deleted", None)
+                    changes.append((path, "deleted", None))
+
+            if len(changes) > BURST_LIMIT:
+                # Bulk op: one summary, no per-file diffs (avoids flooding).
+                self._emit_bulk(changes)
+            else:
+                for path, change, size in changes:
+                    self._emit(path, change, size)
             self._prev = cur

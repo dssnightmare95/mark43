@@ -22,7 +22,7 @@ import argparse
 from ..mcp import store
 
 MAX_FILES = 10          # files listed in the injection
-MAX_DIFF_LINES = 30     # diff lines per file in the injection
+MAX_DIFF_LINES = 20     # diff lines per file in the injection
 
 
 def _format_actions(actions):
@@ -47,6 +47,10 @@ def build_injection(events):
         lines.append(f"**Files changed ({len(file_changes)}):**")
         for e in file_changes[:MAX_FILES]:
             f = e.get("file", {})
+            if f.get("change") == "bulk":
+                lines.append(f"- bulk change: {f.get('count')} files "
+                             "(build/checkout/dependency op)")
+                continue
             lines.append(f"- `{f.get('path')}` ({f.get('change')})")
             diff = e.get("diff")
             if diff:
